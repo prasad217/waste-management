@@ -23,37 +23,30 @@ fetch('/bins')
 
 // Function to add a bin to the map with a fixed label
 function addBinWithFixedLabel(lat, lon, name) {
-    // Add marker for the bin
-    const marker = L.marker([lat, lon]).addTo(map);
+    const marker = L.marker([lat, lon]).addTo(map); // Add marker for the bin
     
-    // Create a fixed label using DivIcon
-    const label = L.divIcon({
+    const label = L.divIcon({ // Create a fixed label using DivIcon
         className: 'bin-label',
         html: `<div><strong>${name}</strong></div>`,
         iconSize: [100, 40],
         iconAnchor: [50, 0]
     });
 
-    // Bind the label as a DivIcon to the marker's location
-    L.marker([lat, lon], { icon: label }).addTo(map);
-
-    // Store for searching later
-    binMarkers[name] = marker;
+    L.marker([lat, lon], { icon: label }).addTo(map); // Bind the label as a DivIcon to the marker's location
+    binMarkers[name] = marker; // Store for searching later
 }
 
 // Get the waste collector's current location and calculate the shortest path
 function getCollectorLocationAndCalculatePath(bins) {
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(position => {
-            // Store the current location
-            collectorLocation = [position.coords.latitude, position.coords.longitude];
+            collectorLocation = [position.coords.latitude, position.coords.longitude]; // Store the current location
             console.log('Collector location:', collectorLocation);
 
-            // Call function to calculate and display the shortest path
-            const binLocations = bins.map(bin => [bin.latitude, bin.longitude]);
+            const binLocations = bins.map(bin => [parseFloat(bin.latitude), parseFloat(bin.longitude)]); // Ensure numbers
             console.log('Bin locations:', binLocations);
 
-            getShortestPath(collectorLocation, binLocations);
+            getShortestPath(collectorLocation, binLocations); // Calculate the shortest path
         }, error => {
             console.error('Error fetching the current location:', error);
         });
@@ -62,18 +55,17 @@ function getCollectorLocationAndCalculatePath(bins) {
     }
 }
 
-
-// OpenRouteService API to calculate the shortest path
+// OpenRouteService API to calculate the shortest path to all bins
+// OpenRouteService API to calculate the shortest path to all bins
+// OpenRouteService API to calculate the shortest path to all bins
 function getShortestPath(collectorLocation, binLocations) {
     const apiKey = '5b3ce3597851110001cf62487b22337bf49342a2a61115c632172023';  // Replace with your OpenRouteService API key
     const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}`;
 
-    // Prepare coordinates: start with the collector's location, followed by bins
-    const coordinates = [[collectorLocation[1], collectorLocation[0]], [binLocations[0][1], binLocations[0][0]]]; // Only collector and first bin
+    // Prepare coordinates: start with the collector's location, followed by all bin locations
+    const coordinates = [collectorLocation, ...binLocations].map(loc => [parseFloat(loc[1]), parseFloat(loc[0])]); // Swap lat/lon to lon/lat
     
-    console.log("Collector Location (sent to API):", collectorLocation);  // Log collector's location
-    console.log("First Bin Location (sent to API):", binLocations[0]);  // Log first bin location
-    console.log("Coordinates sent to API:", coordinates);  // Log coordinates
+    console.log("Coordinates sent to API:", coordinates);
 
     fetch(url, {
         method: 'POST',
@@ -82,24 +74,25 @@ function getShortestPath(collectorLocation, binLocations) {
         },
         body: JSON.stringify({
             coordinates: coordinates,
-            format: 'json'  // Ensure the format is 'json', not 'geojson'
+            format: 'json'
         })
     })
     .then(response => response.json())
     .then(data => {
         console.log("API response:", data);  // Log the full API response
-        
-        if (data && data.routes && data.routes.length > 0) {
-            const encodedGeometry = data.routes[0].geometry;
 
-            // Decode the encoded polyline geometry using leaflet-polyline
-            const decodedCoordinates = polyline.decode(encodedGeometry);  // 'polyline' is available globally now
+        if (data && data.routes && data.routes.length > 0) {
+            const routeData = data.routes[0];  // Extract the first route
+            
+            // Geometry is encoded, so we need to decode it
+            const encodedGeometry = routeData.geometry;
+            const decodedCoordinates = polyline.decode(encodedGeometry);  // Use polyline decoding
 
             if (decodedCoordinates && decodedCoordinates.length > 0) {
-                // Convert the decoded geometry into a format that Leaflet can display
-                const route = L.polyline(decodedCoordinates.map(coord => [coord[0], coord[1]])).addTo(map);
+                // Convert decoded geometry into a format that Leaflet can display
+                const route = L.polyline(decodedCoordinates.map(coord => [coord[0], coord[1]])).addTo(map);  // Ensure correct lat/lon order
                 
-                map.fitBounds(route.getBounds());  // Adjust map to fit the route
+                map.fitBounds(route.getBounds());  // Adjust the map to fit the route
             } else {
                 console.error('Invalid geometry in API response:', encodedGeometry);
                 alert('No valid route could be calculated.');
