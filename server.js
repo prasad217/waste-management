@@ -77,6 +77,15 @@ app.get('/bins', (req, res) => {
     });
 });
 
+// API for waste collector to fetch all bin locations (for shortest path calculation)
+app.get('/collector-bins', isWasteCollector, (req, res) => {
+    const query = "SELECT * FROM bins";
+    db.query(query, (err, results) => {
+        if (err) throw err;
+        res.json(results);
+    });
+});
+
 // Serve the home.html file (login links for admin and waste collector)
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'home.html'));
@@ -89,36 +98,12 @@ app.get('/admin-login', (req, res) => {
 
 // Waste Collector login page
 app.get('/waste-collector-login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'waste-collector-login.html'));  // Waste Collector login page
+    res.sendFile(path.join(__dirname, 'public', 'waste-collector-login.html'));  // Waste collector login page
 });
 
-// Handle login for both Admin and Waste Collector
-app.post('/login', (req, res) => {
-    const { username, password, role } = req.body;
-    const query = "SELECT * FROM users WHERE username = ? AND role = ?";
-    
-    db.query(query, [username, role], (err, result) => {
-        if (err) throw err;
-        if (result.length > 0) {
-            if (password === result[0].password) {  // In production, hash passwords
-                req.session.user = result[0];  // Save user to session
-                if (role === 'admin') {
-                    res.redirect('/admin-dashboard');
-                } else if (role === 'waste_collector') {
-                    res.redirect('/waste-collector-dashboard');
-                }
-            } else {
-                res.send('Invalid password');
-            }
-        } else {
-            res.send('No user found');
-        }
-    });
-});
-
-// Admin dashboard route (now serves index.html as the admin dashboard)
+// Admin dashboard route (protected by isAdmin middleware)
 app.get('/admin-dashboard', isAdmin, (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));  // Admin dashboard is now index.html
+    res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));  // Admin dashboard
 });
 
 // Waste collector dashboard route (protected by isWasteCollector middleware)
@@ -126,13 +111,7 @@ app.get('/waste-collector-dashboard', isWasteCollector, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'waste-collector-dashboard.html'));  // Waste collector dashboard
 });
 
-app.get('/signup', (req, res) => {
-    res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(__dirname, 'public', 'signup.html'));
-});
-
-
-// Handle signup form submission
+// Signup form submission handler
 app.post('/signup', (req, res) => {
     const { username, password, role } = req.body;
 
@@ -140,7 +119,7 @@ app.post('/signup', (req, res) => {
     const checkUserQuery = "SELECT * FROM users WHERE username = ?";
     db.query(checkUserQuery, [username], (err, result) => {
         if (err) throw err;
-        
+
         if (result.length > 0) {
             res.send('Username already exists. Please choose another.');
         } else {
@@ -153,10 +132,12 @@ app.post('/signup', (req, res) => {
         }
     });
 });
+
+// Handle admin login
 app.post('/admin-login', (req, res) => {
     const { username, password } = req.body;
     const query = "SELECT * FROM users WHERE username = ? AND role = 'admin'";
-    
+
     db.query(query, [username], (err, result) => {
         if (err) throw err;
         if (result.length > 0) {
@@ -172,11 +153,11 @@ app.post('/admin-login', (req, res) => {
     });
 });
 
-// Handle waste collector login specifically
+// Handle waste collector login
 app.post('/waste-collector-login', (req, res) => {
     const { username, password } = req.body;
     const query = "SELECT * FROM users WHERE username = ? AND role = 'waste_collector'";
-    
+
     db.query(query, [username], (err, result) => {
         if (err) throw err;
         if (result.length > 0) {
@@ -191,6 +172,7 @@ app.post('/waste-collector-login', (req, res) => {
         }
     });
 });
+
 // Start the server
 app.listen(3000, () => {
     console.log('Server running on http://localhost:3000');

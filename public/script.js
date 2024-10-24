@@ -5,16 +5,19 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 let binMarkers = {};  // Store bin markers for easy search
-let draggableBinMarker;
+let collectorLocation;  // Store the waste collector's current location
 
 // Fetch existing bins from the server and display their names as fixed labels
 fetch('/bins')
     .then(response => response.json())
     .then(bins => {
-        console.log(bins); // Log the bins data for debugging
+        console.log('Bins fetched:', bins); // Log the bins data for debugging
         bins.forEach(bin => {
             addBinWithFixedLabel(bin.latitude, bin.longitude, bin.name);
         });
+
+        // Once bins are loaded, find the collector's location and calculate the shortest path
+        getCollectorLocationAndCalculatePath(bins);
     })
     .catch(err => console.error('Error fetching bins:', err));
 
@@ -25,10 +28,10 @@ function addBinWithFixedLabel(lat, lon, name) {
     
     // Create a fixed label using DivIcon
     const label = L.divIcon({
-        className: 'bin-label', // You can add CSS class for custom styling
+        className: 'bin-label',
         html: `<div><strong>${name}</strong></div>`,
-        iconSize: [100, 40], // Adjust the size according to the text
-        iconAnchor: [50, 0]   // Position relative to the marker
+        iconSize: [100, 40],
+        iconAnchor: [50, 0]
     });
 
     // Bind the label as a DivIcon to the marker's location
@@ -38,122 +41,76 @@ function addBinWithFixedLabel(lat, lon, name) {
     binMarkers[name] = marker;
 }
 
-// Function to make a draggable marker for adding bins
-function addDraggableBinMarker() {
-    // Fetch the next bin name from the server (based on current count)
-    fetch('/next-bin-name')
-        .then(response => response.json())
-        .then(data => {
-            const binName = data.nextBinName;
-
-            if (draggableBinMarker) {
-                map.removeLayer(draggableBinMarker); // Remove the previous draggable marker if exists
-            }
-
-            // Add a draggable marker to the map at the current center of the map
-            draggableBinMarker = L.marker(map.getCenter(), { draggable: true })
-                .addTo(map)
-                .bindPopup(`${binName} (Drag to set location)`)
-                .openPopup();
-
-            // Event listener for when the marker is dragged and dropped
-            draggableBinMarker.on('dragend', function (event) {
-                const marker = event.target;
-                const position = marker.getLatLng();
-                marker.setPopupContent(`${binName} (Dropped here)`); // Update popup to show the bin has been dropped
-
-                // Send the final location to the server
-                sendBinLocationToServer(position.lat, position.lng, binName);
-            });
-        });
-}
-
-// Function to add bin at the user's current location
-function addBinAtCurrentLocation() {
+// Get the waste collector's current location and calculate the shortest path
+function getCollectorLocationAndCalculatePath(bins) {
     if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((position) => {
-            const lat = position.coords.latitude;
-            const lon = position.coords.longitude;
+        navigator.geolocation.getCurrentPosition(position => {
+            // Store the current location
+            collectorLocation = [position.coords.latitude, position.coords.longitude];
+            console.log('Collector location:', collectorLocation);
 
-            // Fetch the next bin name from the server
-            fetch('/next-bin-name')
-                .then(response => response.json())
-                .then(data => {
-                    const binName = data.nextBinName;
+            // Call function to calculate and display the shortest path
+            const binLocations = bins.map(bin => [bin.latitude, bin.longitude]);
+            console.log('Bin locations:', binLocations);
 
-                    // Add bin at current location
-                    L.marker([lat, lon])
-                        .addTo(map)
-                        .bindPopup(`${binName} (Current Location)`).openPopup();
-
-                    // Send the bin location to the server
-                    sendBinLocationToServer(lat, lon, binName);
-                });
+            getShortestPath(collectorLocation, binLocations);
+        }, error => {
+            console.error('Error fetching the current location:', error);
         });
     } else {
         alert('Geolocation is not supported by this browser.');
     }
 }
 
-// Send bin location and name to the server
-const sendBinLocationToServer = (latitude, longitude, binName) => {
-    fetch('/add-bin', {
+
+// OpenRouteService API to calculate the shortest path
+function getShortestPath(collectorLocation, binLocations) {
+    const apiKey = '5b3ce3597851110001cf62487b22337bf49342a2a61115c632172023';  // Replace with your OpenRouteService API key
+    const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}`;
+
+    // Prepare coordinates: start with the collector's location, followed by bins
+    const coordinates = [[collectorLocation[1], collectorLocation[0]], [binLocations[0][1], binLocations[0][0]]]; // Only collector and first bin
+    
+    console.log("Collector Location (sent to API):", collectorLocation);  // Log collector's location
+    console.log("First Bin Location (sent to API):", binLocations[0]);  // Log first bin location
+    console.log("Coordinates sent to API:", coordinates);  // Log coordinates
+
+    fetch(url, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            latitude: latitude,
-            longitude: longitude,
-            name: binName,
-            added_by: 'admin'
+            coordinates: coordinates,
+            format: 'json'  // Ensure the format is 'json', not 'geojson'
         })
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            alert('Bin added successfully!');
-        } else {
-            alert('Error adding bin.');
-        }
-    });
-};
+        console.log("API response:", data);  // Log the full API response
+        
+        if (data && data.routes && data.routes.length > 0) {
+            const encodedGeometry = data.routes[0].geometry;
 
-// Event listener for "Drag and Drop Bin" button
-document.getElementById('drag-bin').addEventListener('click', addDraggableBinMarker);
+            // Decode the encoded polyline geometry using leaflet-polyline
+            const decodedCoordinates = polyline.decode(encodedGeometry);  // 'polyline' is available globally now
 
-// Event listener for "Add Bin at Current Location" button
-document.getElementById('current-location-bin').addEventListener('click', addBinAtCurrentLocation);
-
-// Geocode city or area and center the map
-function geocodeCityOrArea(cityName) {
-    const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cityName)}`;
-
-    fetch(geocodeUrl)
-        .then(response => response.json())
-        .then(data => {
-            if (data.length > 0) {
-                const lat = data[0].lat;
-                const lon = data[0].lon;
-                map.setView([lat, lon], 13);  // Center the map on the geocoded location
+            if (decodedCoordinates && decodedCoordinates.length > 0) {
+                // Convert the decoded geometry into a format that Leaflet can display
+                const route = L.polyline(decodedCoordinates.map(coord => [coord[0], coord[1]])).addTo(map);
+                
+                map.fitBounds(route.getBounds());  // Adjust map to fit the route
             } else {
-                alert('Location not found');
+                console.error('Invalid geometry in API response:', encodedGeometry);
+                alert('No valid route could be calculated.');
             }
-        })
-        .catch(err => console.error('Error with geocoding:', err));
+        } else {
+            console.error('No valid route found or invalid API response:', data);
+            alert('No route could be calculated. Please check the locations or API response.');
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching the route:', error);
+        alert('There was an error calculating the route. Please try again.');
+    });
 }
-
-// Search functionality for bins or cities/areas
-document.getElementById('search-btn').addEventListener('click', () => {
-    const searchQuery = document.getElementById('search-bin-city').value.trim();
-
-    if (binMarkers[searchQuery]) {
-        // If the search query matches a bin, open the popup for the bin
-        const marker = binMarkers[searchQuery];
-        marker.openPopup();  // Open the popup for the searched bin
-        map.setView(marker.getLatLng(), 13);  // Center the map on the bin
-    } else {
-        // If not a bin, treat it as a city or area and geocode it
-        geocodeCityOrArea(searchQuery);
-    }
-});
