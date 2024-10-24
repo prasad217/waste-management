@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waste Management - Admin</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+<body>
+    <h1>Admin Waste Management Map</h1>
+
+    <!-- Search bar to find a specific bin or city -->
+    <input type="text" id="search-bin-city" placeholder="Search bin or city (e.g., bin 1 or New York)">
+    <button id="search-btn">Search</button>
+
+    <!-- Button to add draggable bin -->
+    <button id="drag-bin">Add Draggable Bin</button>
+
+    <!-- Button to add bin at current location -->
+    <button id="current-location-bin">Add Bin at Current Location</button>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
