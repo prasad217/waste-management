@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waste Collection Bin Placement</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <style>
+        #map {
+            height: 80vh;
+            width: 100%;
+        }
+        #search-container {
+            margin-top: 10px;
+        }
+        #done-button {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            display: none;
+        }
+        #search-bar {
+            width: 300px;
+            padding: 10px;
+        }
+        #search-button {
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Select an Area to Suggest Bin Locations</h1>
+    <div id="search-container">
+        <input type="text" id="search-bar" placeholder="Search for a place" />
+        <button id="search-button">Search</button>
+    </div>
+    <div id="map"></div>
+    <button id="done-button">Done</button>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="service.js"></script>
+</body>
+</html>
