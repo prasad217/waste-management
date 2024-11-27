@@ -5,7 +5,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 let binMarkers = {};  // Store bin markers for easy search
-let draggableBinMarker;
+let currentFullBin = null; // Keep track of the currently full bin
 
 // Fetch existing bins from the server and display their names as fixed labels
 fetch('/bins')
@@ -23,137 +23,66 @@ function addBinWithFixedLabel(lat, lon, name) {
     // Add marker for the bin
     const marker = L.marker([lat, lon]).addTo(map);
     
-    // Create a fixed label using DivIcon
-    const label = L.divIcon({
-        className: 'bin-label', // You can add CSS class for custom styling
-        html: `<div><strong>${name}</strong></div>`,
-        iconSize: [100, 40], // Adjust the size according to the text
-        iconAnchor: [50, 0]   // Position relative to the marker
+    // Create a popup with a "Mark as Full" button
+    const popupContent = `
+        <div>
+            <strong>${name}</strong>
+            <button class="mark-full-btn" data-name="${name}">Mark as Full</button>
+        </div>
+    `;
+    
+    marker.bindPopup(popupContent);
+    
+    // Store marker for future reference
+    binMarkers[name] = marker;
+
+    // Add event listener for "Mark as Full" button after popup opens
+    marker.on('popupopen', () => {
+        document.querySelector('.mark-full-btn').addEventListener('click', () => {
+            markBinAsFull(name, marker);
+        });
+    });
+}
+
+// Function to mark a bin as full
+function markBinAsFull(name, marker) {
+    // If another bin is already marked as full, reset it
+    if (currentFullBin) {
+        currentFullBin.setIcon(new L.Icon.Default()); // Reset to the default marker icon
+    }
+
+    // Update the current full bin
+    currentFullBin = marker;
+
+    // Change the icon to indicate it is full
+    const fullIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/2329/2329244.png', // Example full bin icon URL
+        iconSize: [32, 32], // Adjust size
+        iconAnchor: [16, 32], // Anchor at the bottom of the icon
     });
 
-    // Bind the label as a DivIcon to the marker's location
-    L.marker([lat, lon], { icon: label }).addTo(map);
+    marker.setIcon(fullIcon);
 
-    // Store for searching later
-    binMarkers[name] = marker;
+    // Notify the server that the bin is full
+    notifyBinFull(name);
 }
 
-// Function to make a draggable marker for adding bins
-function addDraggableBinMarker() {
-    // Fetch the next bin name from the server (based on current count)
-    fetch('/next-bin-name')
-        .then(response => response.json())
-        .then(data => {
-            const binName = data.nextBinName;
-
-            if (draggableBinMarker) {
-                map.removeLayer(draggableBinMarker); // Remove the previous draggable marker if exists
-            }
-
-            // Add a draggable marker to the map at the current center of the map
-            draggableBinMarker = L.marker(map.getCenter(), { draggable: true })
-                .addTo(map)
-                .bindPopup(`${binName} (Drag to set location)`)
-                .openPopup();
-
-            // Event listener for when the marker is dragged and dropped
-            draggableBinMarker.on('dragend', function (event) {
-                const marker = event.target;
-                const position = marker.getLatLng();
-                marker.setPopupContent(`${binName} (Dropped here)`); // Update popup to show the bin has been dropped
-
-                // Send the final location to the server
-                sendBinLocationToServer(position.lat, position.lng, binName);
-            });
-        });
-}
-
-// Function to add bin at the user's current location
-function addBinAtCurrentLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((position) => {
-            const lat = position.coords.latitude;
-            const lon = position.coords.longitude;
-
-            // Fetch the next bin name from the server
-            fetch('/next-bin-name')
-                .then(response => response.json())
-                .then(data => {
-                    const binName = data.nextBinName;
-
-                    // Add bin at current location
-                    L.marker([lat, lon])
-                        .addTo(map)
-                        .bindPopup(`${binName} (Current Location)`).openPopup();
-
-                    // Send the bin location to the server
-                    sendBinLocationToServer(lat, lon, binName);
-                });
-        });
-    } else {
-        alert('Geolocation is not supported by this browser.');
-    }
-}
-
-// Send bin location and name to the server
-const sendBinLocationToServer = (latitude, longitude, binName) => {
-    fetch('/add-bin', {
+// Notify the server that a bin is marked as full
+function notifyBinFull(binName) {
+    fetch('/mark-bin-full', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            latitude: latitude,
-            longitude: longitude,
-            name: binName,
-            added_by: 'admin'
-        })
+        body: JSON.stringify({ binName }),
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Bin added successfully!');
-        } else {
-            alert('Error adding bin.');
-        }
-    });
-};
-
-// Event listener for "Drag and Drop Bin" button
-document.getElementById('drag-bin').addEventListener('click', addDraggableBinMarker);
-
-// Event listener for "Add Bin at Current Location" button
-document.getElementById('current-location-bin').addEventListener('click', addBinAtCurrentLocation);
-
-// Geocode city or area and center the map
-function geocodeCityOrArea(cityName) {
-    const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cityName)}`;
-
-    fetch(geocodeUrl)
         .then(response => response.json())
         .then(data => {
-            if (data.length > 0) {
-                const lat = data[0].lat;
-                const lon = data[0].lon;
-                map.setView([lat, lon], 13);  // Center the map on the geocoded location
+            if (data.success) {
+                alert(`Bin "${binName}" has been marked as full.`);
             } else {
-                alert('Location not found');
+                alert('Error marking the bin as full.');
             }
         })
-        .catch(err => console.error('Error with geocoding:', err));
+        .catch(err => console.error('Error marking bin as full:', err));
 }
-
-// Search functionality for bins or cities/areas
-document.getElementById('search-btn').addEventListener('click', () => {
-    const searchQuery = document.getElementById('search-bin-city').value.trim();
-
-    if (binMarkers[searchQuery]) {
-        // If the search query matches a bin, open the popup for the bin
-        const marker = binMarkers[searchQuery];
-        marker.openPopup();  // Open the popup for the searched bin
-        map.setView(marker.getLatLng(), 13);  // Center the map on the bin
-    } else {
-        // If not a bin, treat it as a city or area and geocode it
-        geocodeCityOrArea(searchQuery);
-    }
-});
